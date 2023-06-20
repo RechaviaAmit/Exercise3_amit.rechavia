@@ -1,0 +1,153 @@
+name: assignment3
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Add name and date to log file
+        run: |
+          echo $(date -Iminutes) > log.txt
+          echo Amit Rechavia >> log.txt
+      - name: Build Docker image
+        id: build_docker
+        continue-on-error: true
+        run: docker build -t dish_meal_services .
+      - name: Log Docker build result
+        run: |
+          if [[ "${{ steps.build_docker.outcome }}" == "success" ]]; then
+            echo "Image successfully built" >> log.txt
+          else
+            echo "Image not able to be built" >> log.txt
+          fi
+      - name: Save docker image to gzip
+        run: docker save dish_meal_services | gzip > dish_meal_services.tar.gz
+      - name: Upload log file to artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: log.txt
+          path: log.txt
+      - name: validate docker built
+        run: |
+          if [[ "${{ steps.build_docker.outcome }}" == "failure" ]]; then
+            exit 1
+          fi
+      - name: Upload Docker image as artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: dish_meal_services
+          path: dish_meal_services.tar.gz
+
+  test:
+    needs: build
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.10
+      - uses: actions/checkout@v2
+      - name: Download Docker image from artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: dish_meal_services
+      - name: Download log from artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: log.txt
+      - name: Load Docker image from gzip
+        run: |
+          docker load < dish_meal_services.tar.gz
+      - name: Run Docker image
+        id: run_docker
+        run: |
+          docker run -p 8000:8000 dish_meal_services > test_server_log.txt 2>&1 &
+          sleep 5
+          docker ps
+      - name: Log Docker run result
+        run: |
+          if [[ "$(docker ps | wc -l)" -gt 1 ]]; then
+            echo "Container up and running" >> log.txt
+          else
+            echo "Container failed to run" >> log.txt
+          fi
+      - name: Install requirements
+        run: pip3 install -r requirements.txt
+      - name: Run tests
+        id: run_tests
+        continue-on-error: true
+        run: |
+          pytest -v tests/assn3_tests.py > assn3_test_results.txt
+      - name: Log tests result
+        run: |
+          if [[ "${{ steps.run_tests.outcome }}" == "success" ]]; then
+            echo "Tests succeeded" >> log.txt
+          else
+            echo "Tests failed" >> log.txt
+          fi
+      - name: Upload log file to artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: log.txt
+          path: log.txt
+      - name: Upload tests log file to artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: assn3_test_results.txt
+          path: assn3_test_results.txt
+      - name: Upload dish meal service logs
+        uses: actions/upload-artifact@v2
+        with:
+          name: additional_logs_test_server_log.txt
+          path: test_server_log.txt
+      - name: assert tests
+        run: |
+          if [[ "${{ steps.run_tests.outcome }}" == "failure" ]]; then
+            exit 1
+          fi
+
+  query:
+    needs: build
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.10
+      - uses: actions/checkout@v2
+      - name: Download Docker image from artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: dish_meal_services
+      - name: Load Docker image
+        run: docker load < dish_meal_services.tar.gz
+      - name: Run Docker image
+        run: |
+          docker run -p 8000:8000 dish_meal_services > query_server_log.txt 2>&1 &
+          sleep 5
+          docker ps
+      - name: Install requirements
+        run: pip3 install -r requirements.txt
+      - name: Run Query
+        run: |
+          python3 ./jobProcess.py > query_log.txt 2>&1
+      - name: Upload response.txt to artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: response.txt
+          path: ./response.txt
+      - name: Upload query_log.txt to artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: additional_logs_query_log.txt
+          path: query_log.txt
+
+      - name: Upload dish meal service logs
+        uses: actions/upload-artifact@v2
+        with:
+          name: additional_logs_query_server_log.txt
+          path: query_server_log.txt

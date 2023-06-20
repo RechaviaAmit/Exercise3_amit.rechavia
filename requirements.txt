@@ -1,0 +1,6 @@
+werkzeug
+requests
+flask
+flask_restful
+pytest
+requests
