@@ -1,6 +1,6 @@
 import requests
 
-with open("queries.txt", "r") as query_file:
+with open("query.txt", "r") as query_file:
     query_lines = [line.rstrip("\n") for line in query_file]
 
 response_lines = []
